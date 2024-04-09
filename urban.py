@@ -1,126 +1,54 @@
-import torch
-import torch.nn as nn
-import torchvision
-from torchvision import datasets, models, transforms
-import torch.optim as optim
-import time
-import copy
+from keras.applications.vgg16 import VGG16
+from keras.models import Model
+from keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, Input
 
-# Define transforms for the training and validation sets
-data_transforms = {
-    'train': transforms.Compose([
-        transforms.RandomResizedCrop(224),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ]),
-    'val': transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ]),
-}
+class UrbanBuildingClassifierVgg16:
+    def __init__(self, input_width, input_height, category_list):
+        self.input_shape = (input_width, input_height, 3)
+        self.classes = len(category_list)
+        self.category_list = category_list
+        self.model = None
+        self.build_model()
 
-# Load the dataset
-data_dir = 'path_to_your_dataset_directory'
-image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x), data_transforms[x]) for x in ['train', 'val']}
-dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=4, shuffle=True, num_workers=4) for x in ['train', 'val']}
-dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val']}
-class_names = image_datasets['train'].classes
+    def build_model(self):
+        # Load pre-trained VGG16 model
+        vgg16 = VGG16(weights='imagenet', input_shape=self.input_shape, include_top=False)
 
-# Function to initialize and fine-tune the models
-def initialize_model(model_name, num_classes):
-    if model_name == "resnet18":
-        model = models.resnet18(pretrained=True)
-    elif model_name == "resnet34":
-        model = models.resnet34(pretrained=True)
-    elif model_name == "resnet50":
-        model = models.resnet50(pretrained=True)
-    elif model_name == "vgg16":
-        model = models.vgg16(pretrained=True)
-    
-    # Freeze model parameters
-    for param in model.parameters():
-        param.requires_grad = False
+        # Freeze the weights of the pre-trained layers
+        for layer in vgg16.layers:
+            layer.trainable = False
 
-    # Modify the last fully connected layer for binary classification
-    if "resnet" in model_name:
-        num_ftrs = model.fc.in_features
-        model.fc = nn.Linear(num_ftrs, num_classes)
-    elif "vgg" in model_name:
-        model.classifier[6] = nn.Linear(4096, num_classes)
+        # Create new layers for classification
+        x = Flatten()(vgg16.output)
+        x = Dense(256, activation='relu')(x)
+        x = Dropout(0.5)(x)
+        predictions = Dense(self.classes, activation='softmax')(x)
 
-    return model
+        # Add input layer for image
+        image_input = Input(shape=self.input_shape)
+        self.model = Model(inputs=[image_input], outputs=[predictions])
+        self.model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
-# Initialize models
-model_names = ["resnet18", "resnet34", "resnet50", "vgg16"]
-models_dict = {}
-for model_name in model_names:
-    models_dict[model_name] = initialize_model(model_name, num_classes=2)
+    def train(self, train_images, train_labels, epochs=50, batch_size=32, validation_split=0.2):
+        # Train the model
+        history = self.model.fit(train_images, train_labels, epochs=epochs, batch_size=batch_size, validation_split=validation_split)
+        return history
 
-# Function to train the model
-def train_model(model, criterion, optimizer, num_epochs=25):
-    since = time.time()
-    best_model_wts = copy.deepcopy(model.state_dict())
-    best_acc = 0.0
+    def predict(self, image):
+        # Predict the category for the given image
+        prediction = self.model.predict(image)
+        category_index = prediction.argmax()
+        category_name = self.category_list[category_index]
+        return category_name
 
-    for epoch in range(num_epochs):
-        print('Epoch {}/{}'.format(epoch, num_epochs - 1))
-        print('-' * 10)
+# Sample usage for training
+def train_urban_building_classifier(train_images, train_labels, category_list):
+    category_list = ["residential", "monument", "office"]
+    urban_building_classifier = UrbanBuildingClassifierVgg16(input_width=224, input_height=224, category_list=category_list)
+    model = urban_building_classifier.model
+    model.summary()
 
-        for phase in ['train', 'val']:
-            if phase == 'train':
-                model.train()
-            else:
-                model.eval()
+    # Assuming train_images and train_labels are provided as numpy arrays
+    history = urban_building_classifier.train(train_images, train_labels)
 
-            running_loss = 0.0
-            running_corrects = 0
-
-            for inputs, labels in dataloaders[phase]:
-                inputs = inputs.to(device)
-                labels = labels.to(device)
-
-                optimizer.zero_grad()
-
-                with torch.set_grad_enabled(phase == 'train'):
-                    outputs = model(inputs)
-                    _, preds = torch.max(outputs, 1)
-                    loss = criterion(outputs, labels)
-
-                    if phase == 'train':
-                        loss.backward()
-                        optimizer.step()
-
-                running_loss += loss.item() * inputs.size(0)
-                running_corrects += torch.sum(preds == labels.data)
-
-            epoch_loss = running_loss / dataset_sizes[phase]
-            epoch_acc = running_corrects.double() / dataset_sizes[phase]
-
-            print('{} Loss: {:.4f} Acc: {:.4f}'.format(
-                phase, epoch_loss, epoch_acc))
-
-            if phase == 'val' and epoch_acc > best_acc:
-                best_acc = epoch_acc
-                best_model_wts = copy.deepcopy(model.state_dict())
-
-        print()
-
-    time_elapsed = time.time() - since
-    print('Training complete in {:.0f}m {:.0f}s'.format(
-        time_elapsed // 60, time_elapsed % 60))
-    print('Best val Acc: {:4f}'.format(best_acc))
-
-    model.load_state_dict(best_model_wts)
-    return model
-
-# Train the models
-for model_name, model in models_dict.items():
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    model = model.to(device)
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(), lr=0.001)
-    print(f"\nTraining {model_name}:")
-    models_dict[model_name] = train_model(model, criterion, optimizer, num_epochs=25)
+    return model, history
