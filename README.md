@@ -26,7 +26,7 @@ https://www.kaggle.com/datasets/danushkumarv/indian-monuments-image-dataset
 
 https://www.kaggle.com/datasets/sniafas/vyronas-database
 
-https://image-net.org/data/winter21_whole/n03028079.tar churches
+https://image-net.org/data/winter21_whole/n03028079.tar 
 
 https://www.linkedin.com/advice/1/what-benefits-challenges-using-generative-adversarial
 

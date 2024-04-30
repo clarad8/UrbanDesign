@@ -1,0 +1,14 @@
+03028079-n church
+04081281-n restaurant
+04005630-n prison
+04562935-n water tower
+
+
+
+
+Notes about dataset:
+
+- office: 956 (all unique)
+- church: 1328 (USING HALF!)
+- apartment: 900 (15 pics per building)
+- monument: 348  
