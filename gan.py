@@ -1,3 +1,21 @@
+# This Python 3 environment comes with many helpful analytics libraries installed
+# It is defined by the kaggle/python Docker image: https://github.com/kaggle/docker-python
+# For example, here's several helpful packages to load
+
+import numpy as np # linear algebra
+import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
+
+# Input data files are available in the read-only "../input/" directory
+# For example, running this (by clicking run or pressing Shift+Enter) will list all files under the input directory
+
+# import os
+# for dirname, _, filenames in os.walk('/kaggle/input'):
+#     for filename in filenames:
+#         print(os.path.join(dirname, filename))
+
+# You can write up to 20GB to the current directory (/kaggle/working/) that gets preserved as output when you create a version using "Save & Run All" 
+# You can also write temporary files to /kaggle/temp/, but they won't be saved outside of the current session
+
 import tensorflow as tf
 from keras.layers import Input, Reshape, Dropout, Dense
 from keras.layers import Flatten, BatchNormalization
@@ -11,6 +29,7 @@ from PIL import Image
 import os
 import time
 import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
 
 # comment out below line to enable tensorflow outputs
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -25,7 +44,7 @@ config = tf.compat.v1.ConfigProto()
 config.gpu_options.allow_growth = True
 
 
-GENERATE_RES = 7  # Generation resolution factor
+GENERATE_RES =  1 # Generation resolution factor
 # (1=32, 2=64, 3=96, 4=128, etc.)
 GENERATE_SQUARE = 32 * GENERATE_RES  # rows/cols (should be square)
 IMAGE_CHANNELS = 3
@@ -39,17 +58,14 @@ PREVIEW_MARGIN = 16
 SEED_SIZE = 100
 
 # Configuration
-DATA_PATH = 'Dataset/'
-BINARY_PATH = 'Binary/'
-OUTPUT_PATH = 'Output/'
+DATA_PATH = '/kaggle/input/dataset/'
+OUTPUT_PATH = '/kaggle/working/'
+BINARY_PATH = '/kaggle/working/'
 EPOCHS = 1000
 BATCH_SIZE = 32
 BUFFER_SIZE = 60000
 
 print(f"Will generate {GENERATE_SQUARE}px square images.")
-
-[os.remove(os.path.join(OUTPUT_PATH, file)) for file in os.listdir(
-    OUTPUT_PATH) if os.path.isfile(os.path.join(OUTPUT_PATH, file))]  # ! save the output for later use?
 
 
 def hms_string(sec_elapsed):
@@ -58,6 +74,8 @@ def hms_string(sec_elapsed):
     s = sec_elapsed % 60
     return "{}:{:>02}:{:>05.2f}".format(h, m, s)
 
+[os.remove(os.path.join(OUTPUT_PATH, file)) for file in os.listdir(
+    OUTPUT_PATH) if os.path.isfile(os.path.join(OUTPUT_PATH, file))] 
 
 training_binary_path = os.path.join(
     BINARY_PATH, f'training_data_{GENERATE_SQUARE}_{GENERATE_SQUARE}.npy')
@@ -71,25 +89,47 @@ if not os.path.isfile(training_binary_path):
     count = 0
     S = (GENERATE_SQUARE, GENERATE_SQUARE, 3)
 
-    for file in os.listdir(DATA_PATH):
-        path = os.path.join(DATA_PATH + file)
-        for inside_file in os.listdir(path):
-            new_path = os.path.join(DATA_PATH+file+'/'+inside_file)
-            # print(os.path.exists(new_path))
+#     for folder in os.listdir(DATA_PATH):
+#         folder_path = os.path.join(DATA_PATH + folder)            
+#         for inside_file in os.listdir(path):
+#             new_path = os.path.join(DATA_PATH+file+'/'+inside_file)
+#             print(os.path.exists(new_path))
+#             try:
 
-            try:
+#                 image = Image.open(new_path).resize(
+#                     (GENERATE_SQUARE, GENERATE_SQUARE))  # , Image.ANTIALIAS)
 
-                image = Image.open(new_path).resize(
-                    (GENERATE_SQUARE, GENERATE_SQUARE))  # , Image.ANTIALIAS)
+#                 if (np.shape(np.asarray(image)) == S):
+#                     training_data.append(np.asarray(image))
+#                     count += 1
+#                 else:
+#                     print("exception here: ", file)
+#             except Exception as e:
+#                 print(e, new_path)
+#         print("finished", file)
+    for folder in os.listdir(DATA_PATH):
+        folder_path = os.path.join(DATA_PATH, folder)
+        for subfolder in os.listdir(folder_path):
+            subfolder_path = os.path.join(folder_path, subfolder)
+            for inside_file in os.listdir(subfolder_path):
+                new_path = os.path.join(subfolder_path, inside_file)
+#                 print(os.path.exists(new_path))
+                try:
+                    image = Image.open(new_path).resize(
+                        (GENERATE_SQUARE, GENERATE_SQUARE))
+#                     img = mpimg.imread(new_path)
+#                     plt.imshow(img)
+#                     plt.axis('off')  
+#                     plt.show()
 
-                if (np.shape(np.asarray(image)) == S):
-                    training_data.append(np.asarray(image))
-                    count += 1
-                else:
-                    print("exception here: ", file)
-            except Exception as e:
-                print(e, new_path)
-        print("finished", file)
+                    if np.shape(np.asarray(image)) == S:
+                        training_data.append(np.asarray(image))
+                        count += 1
+                    else:
+                        print("exception here: ", file)
+                except Exception as e:
+                    print(e, new_path)
+            print("finished", subfolder)
 
     print(count)
 
@@ -110,7 +150,6 @@ else:
     # shuffle the data
 train_dataset = tf.data.Dataset.from_tensor_slices(
     training_data).shuffle(BUFFER_SIZE).batch(BATCH_SIZE)
-
 
 def build_generator(seed_size, channels):
     model = Sequential()
@@ -180,7 +219,6 @@ def build_discriminator(image_shape):
     model.add(Dense(1, activation='sigmoid'))
 
     return model
-
 
 def save_images(cnt, noise):
     image_array = np.full((
